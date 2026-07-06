@@ -192,8 +192,6 @@ export default function AccountsPage() {
                   }
                 >
                   <option value="FACEBOOK">Facebook</option>
-                  <option value="INSTAGRAM">Instagram</option>
-                  <option value="TIKTOK">TikTok</option>
                 </select>
               </div>
               <div>

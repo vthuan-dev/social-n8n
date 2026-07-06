@@ -56,18 +56,6 @@ export class SocialService {
     return { deleted: true };
   }
 
-  // Trả token đã giải mã cho internal use (vd: n8n publish qua backend proxy)
-  async getDecryptedToken(id: string) {
-    const account = await this.prisma.socialAccount.findUnique({
-      where: { id },
-    });
-    if (!account) throw new NotFoundException('Tài khoản không tồn tại');
-    return {
-      accessToken: decrypt(account.accessToken),
-      refreshToken: account.refreshToken ? decrypt(account.refreshToken) : null,
-    };
-  }
-
   /**
    * Resolve access token cho 1 target khi publish.
    * Ưu tiên socialAccountId đã gắn với target; nếu chưa có thì lấy tài khoản
