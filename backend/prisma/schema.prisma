@@ -1,0 +1,144 @@
+// Prisma schema for AI Social Media Content Automation
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+}
+
+enum Platform {
+  FACEBOOK
+  INSTAGRAM
+  X
+  LINKEDIN
+}
+
+enum PostStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  PUBLISHED
+  FAILED
+  REJECTED
+}
+
+enum TargetStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+}
+
+enum Language {
+  VI
+  EN
+  BOTH
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(EDITOR)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns Campaign[]
+  approvals Post[]     @relation("ApprovedBy")
+}
+
+model SocialAccount {
+  id           String   @id @default(uuid())
+  platform     Platform
+  displayName  String
+  // Encrypted OAuth credentials (never stored in plaintext)
+  accessToken  String
+  refreshToken String?
+  externalId   String? // page id / account id on the platform
+  expiresAt    DateTime?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  targets PostTarget[]
+}
+
+model Campaign {
+  id          String   @id @default(uuid())
+  name        String
+  topic       String
+  brandVoice  String   @db.Text
+  language    Language @default(BOTH)
+  platforms   Platform[]
+  // Cron-like schedule string for n8n (e.g. "0 9 * * *")
+  schedule    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id])
+  posts   Post[]
+}
+
+model Post {
+  id          String     @id @default(uuid())
+  captionVi   String?    @db.Text
+  captionEn   String?    @db.Text
+  imageUrl    String?
+  hashtags    String[]
+  status      PostStatus @default(DRAFT)
+  scheduledAt DateTime?
+  // URL resume của execution n8n đang treo tại node Wait (chờ duyệt).
+  // Khi user bấm Duyệt, backend POST vào URL này để workflow chạy tiếp.
+  resumeUrl   String?    @db.Text
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  approvedById String?
+  approvedBy   User?   @relation("ApprovedBy", fields: [approvedById], references: [id])
+
+  targets PostTarget[]
+  logs    Log[]
+}
+
+model PostTarget {
+  id         String       @id @default(uuid())
+  platform   Platform
+  status     TargetStatus @default(PENDING)
+  externalId String? // id of the published post on the platform
+  permalink  String?
+  error      String?      @db.Text
+  publishedAt DateTime?
+
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  socialAccountId String?
+  socialAccount   SocialAccount? @relation(fields: [socialAccountId], references: [id])
+}
+
+model Log {
+  id        String   @id @default(uuid())
+  level     String   @default("info") // info | warn | error
+  source    String // workflow name / module
+  message   String   @db.Text
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  postId String?
+  post   Post?   @relation(fields: [postId], references: [id], onDelete: SetNull)
+}

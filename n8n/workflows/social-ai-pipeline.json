@@ -1,0 +1,300 @@
+{
+  "id": "SocialAIPipeline01",
+  "name": "Social AI Pipeline (Generate → Chờ duyệt → Publish)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-content",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-generate",
+      "name": "Webhook: Generate",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 300],
+      "webhookId": "generate-content"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_BASE_URL }}/api/campaigns/internal/{{ $json.body.campaignId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-campaign",
+      "name": "Fetch Campaign Detail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"temperature\": 0.8,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Bạn là chuyên gia sáng tạo nội dung mạng xã hội song ngữ Việt–Anh. Luôn trả về DUY NHẤT một JSON hợp lệ, không kèm giải thích.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify('Chủ đề chiến dịch: ' + ($json.topic || '') + '\\nGiọng thương hiệu (brand voice): ' + ($json.brandVoice || '') + '\\nNền tảng mục tiêu: ' + JSON.stringify($json.platforms || []) + '\\n\\nHãy tạo 1 bài đăng gồm:\\n1. Caption tiếng Việt (tự nhiên, hấp dẫn, có emoji hợp lý)\\n2. Caption tiếng Anh (bản dịch/phóng tác tương đương)\\n3. 5-8 hashtag liên quan\\n4. Một mô tả ảnh (image prompt) bằng tiếng Anh để sinh ảnh minh hoạ\\n\\nTrả về JSON theo cấu trúc: {\\\"captionVi\\\": \\\"...\\\", \\\"captionEn\\\": \\\"...\\\", \\\"hashtags\\\": [\\\"#...\\\"], \\\"imagePrompt\\\": \\\"...\\\"}') }}\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "groq-generate",
+      "name": "Groq: Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [580, 300],
+      "notesInFlow": true,
+      "notes": "Groq OpenAI-compatible API. Cần biến môi trường GROQ_API_KEY."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse JSON output từ Groq (OpenAI-compatible) và chuẩn hoá\nconst raw = $input.first().json;\nlet content = raw?.choices?.[0]?.message?.content ?? raw;\nif (typeof content === 'string') {\n  content = content.replace(/```json|```/g, '').trim();\n  content = JSON.parse(content);\n}\nreturn [{ json: {\n  campaignId: $('Webhook: Generate').first().json.body.campaignId,\n  captionVi: content.captionVi,\n  captionEn: content.captionEn,\n  hashtags: content.hashtags,\n  imagePrompt: content.imagePrompt,\n  platforms: $('Fetch Campaign Detail').first().json.platforms || []\n} }];"
+      },
+      "id": "parse-content",
+      "name": "Parse & Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://image.pollinations.ai/prompt/{{ encodeURIComponent($json.imagePrompt) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "generate-image",
+      "name": "Pollinations: Image URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [980, 300],
+      "notes": "Pollinations.ai miễn phí, URL ảnh trả về = chính URL request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_BASE_URL }}/api/posts/draft",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"campaignId\": \"{{ $('Parse & Normalize').first().json.campaignId }}\",\n  \"captionVi\": {{ JSON.stringify($('Parse & Normalize').first().json.captionVi) }},\n  \"captionEn\": {{ JSON.stringify($('Parse & Normalize').first().json.captionEn) }},\n  \"imageUrl\": \"https://image.pollinations.ai/prompt/{{ encodeURIComponent($('Parse & Normalize').first().json.imagePrompt) }}\",\n  \"hashtags\": {{ JSON.stringify($('Parse & Normalize').first().json.hashtags) }},\n  \"platforms\": {{ JSON.stringify($('Parse & Normalize').first().json.platforms) }},\n  \"resumeUrl\": \"{{ $execution.resumeUrl }}\"\n}",
+        "options": {}
+      },
+      "id": "save-draft",
+      "name": "Save Draft to Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 300],
+      "notes": "Lưu draft + resumeUrl. Backend hiện bài Chờ duyệt trên dashboard."
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "httpMethod": "POST",
+        "options": {}
+      },
+      "id": "wait-approval",
+      "name": "WAIT: Chờ duyệt",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1380, 300],
+      "webhookId": "wait-approval-resume",
+      "notesInFlow": true,
+      "notes": "Execution TREO tại đây. Khi user bấm Duyệt, backend POST vào resumeUrl (kèm token) -> chạy tiếp."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dữ liệu resume do backend gửi vào khi user Duyệt.\n// Wait node có thể bọc trong .body hoặc trả thẳng -> chuẩn hoá cả 2 trường hợp.\nconst item = $input.first().json || {};\nconst data = item.body && item.body.targets ? item.body : item;\nreturn [{ json: {\n  postId: data.postId,\n  captionVi: data.captionVi,\n  captionEn: data.captionEn,\n  imageUrl: data.imageUrl,\n  hashtags: data.hashtags || [],\n  targets: data.targets || []\n} }];"
+      },
+      "id": "parse-resume",
+      "name": "Parse Resume Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1580, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "targets",
+        "options": {}
+      },
+      "id": "split-targets",
+      "name": "Split Targets",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [1780, 300],
+      "notes": "Tách từng target (mỗi platform 1 nhánh xử lý)"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "FACEBOOK",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "FACEBOOK"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "INSTAGRAM",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "INSTAGRAM"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "route-platform",
+      "name": "Route by Platform",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1980, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.externalId }}/photos",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{ $('Parse Resume Data').first().json.imageUrl }}\",\n  \"caption\": {{ JSON.stringify($('Parse Resume Data').first().json.captionVi + '\\n\\n' + ($('Parse Resume Data').first().json.hashtags || []).join(' ')) }},\n  \"access_token\": \"{{ $json.accessToken }}\"\n}",
+        "options": {}
+      },
+      "id": "post-facebook",
+      "name": "Post to Facebook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2200, 200],
+      "onError": "continueErrorOutput",
+      "notes": "Đăng ảnh + caption lên Page. externalId (page id) và accessToken do backend truyền trong từng target."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Chuẩn hoá kết quả đăng của từng target thành format callback.\n// Graph API /photos trả { id, post_id }; nhánh lỗi (continueErrorOutput) mang item.json.error.\nconst body = $('Parse Resume Data').first().json;\nconst results = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const platform = j.platform || 'FACEBOOK';\n  const postId = j.post_id || j.id || null;\n  const ok = !j.error && !!postId;\n  let errMsg = null;\n  if (!ok) {\n    const raw = j.error;\n    errMsg = raw ? (raw.message || raw.error?.message || JSON.stringify(raw)) : 'Không đăng được (thiếu post_id)';\n  }\n  results.push({\n    platform,\n    success: ok,\n    externalId: postId,\n    permalink: postId ? `https://facebook.com/${postId}` : null,\n    error: errMsg\n  });\n}\nreturn [{ json: { postId: body.postId, results } }];"
+      },
+      "id": "collect-results",
+      "name": "Collect Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2420, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_BASE_URL }}/api/webhooks/publish-result/{{ $json.postId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"results\": {{ JSON.stringify($json.results) }}\n}",
+        "options": {}
+      },
+      "id": "callback-result",
+      "name": "Callback Publish Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2640, 300]
+    }
+  ],
+  "connections": {
+    "Webhook: Generate": {
+      "main": [[{ "node": "Fetch Campaign Detail", "type": "main", "index": 0 }]]
+    },
+    "Fetch Campaign Detail": {
+      "main": [[{ "node": "Groq: Generate Content", "type": "main", "index": 0 }]]
+    },
+    "Groq: Generate Content": {
+      "main": [[{ "node": "Parse & Normalize", "type": "main", "index": 0 }]]
+    },
+    "Parse & Normalize": {
+      "main": [[{ "node": "Pollinations: Image URL", "type": "main", "index": 0 }]]
+    },
+    "Pollinations: Image URL": {
+      "main": [[{ "node": "Save Draft to Backend", "type": "main", "index": 0 }]]
+    },
+    "Save Draft to Backend": {
+      "main": [[{ "node": "WAIT: Chờ duyệt", "type": "main", "index": 0 }]]
+    },
+    "WAIT: Chờ duyệt": {
+      "main": [[{ "node": "Parse Resume Data", "type": "main", "index": 0 }]]
+    },
+    "Parse Resume Data": {
+      "main": [[{ "node": "Split Targets", "type": "main", "index": 0 }]]
+    },
+    "Split Targets": {
+      "main": [[{ "node": "Route by Platform", "type": "main", "index": 0 }]]
+    },
+    "Route by Platform": {
+      "main": [
+        [{ "node": "Post to Facebook", "type": "main", "index": 0 }],
+        [{ "node": "Post to Facebook", "type": "main", "index": 0 }],
+        [{ "node": "Post to Facebook", "type": "main", "index": 0 }]
+      ]
+    },
+    "Post to Facebook": {
+      "main": [
+        [{ "node": "Collect Results", "type": "main", "index": 0 }],
+        [{ "node": "Collect Results", "type": "main", "index": 0 }]
+      ]
+    },
+    "Collect Results": {
+      "main": [[{ "node": "Callback Publish Result", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

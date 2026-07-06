@@ -1,0 +1,185 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   Design System — Dark Premium
+   AI Social Content Automation Dashboard
+   ============================================ */
+
+:root {
+  /* Base surfaces */
+  --bg-base: 222 47% 6%;
+  --bg-surface: 222 40% 9%;
+  --bg-elevated: 222 36% 12%;
+  --bg-overlay: 222 36% 14%;
+
+  /* Borders */
+  --border-subtle: 222 30% 18%;
+  --border-strong: 222 28% 26%;
+
+  /* Text */
+  --text-primary: 210 40% 98%;
+  --text-secondary: 215 20% 70%;
+  --text-muted: 215 16% 50%;
+
+  /* Brand — violet/indigo gradient identity */
+  --brand: 258 90% 66%;
+  --brand-strong: 262 83% 58%;
+  --accent: 190 95% 55%;
+
+  /* Status */
+  --success: 152 69% 45%;
+  --warning: 38 92% 55%;
+  --danger: 0 84% 62%;
+  --info: 217 91% 60%;
+
+  --radius: 14px;
+}
+
+* {
+  border-color: hsl(var(--border-subtle));
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background-color: hsl(var(--bg-base));
+  color: hsl(var(--text-primary));
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient gradient background */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60% 50% at 20% 10%, hsl(258 90% 66% / 0.14), transparent 70%),
+    radial-gradient(50% 50% at 90% 20%, hsl(190 95% 55% / 0.10), transparent 70%),
+    radial-gradient(60% 60% at 60% 100%, hsl(262 83% 58% / 0.10), transparent 70%);
+  pointer-events: none;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border-strong));
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(222 20% 34%);
+}
+
+@layer components {
+  .glass {
+    background: hsl(var(--bg-surface) / 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid hsl(var(--border-subtle));
+  }
+
+  .card {
+    background: hsl(var(--bg-surface));
+    border: 1px solid hsl(var(--border-subtle));
+    border-radius: var(--radius);
+  }
+
+  .card-hover {
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    border-color: hsl(var(--border-strong));
+    box-shadow: 0 12px 40px -12px hsl(258 90% 40% / 0.4);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    padding: 0.625rem 1.1rem;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    color: white;
+    background: linear-gradient(135deg, hsl(var(--brand)), hsl(var(--brand-strong)));
+    box-shadow: 0 8px 24px -8px hsl(258 90% 55% / 0.6);
+  }
+  .btn-primary:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+  }
+  .btn-ghost {
+    color: hsl(var(--text-secondary));
+    background: hsl(var(--bg-elevated));
+    border: 1px solid hsl(var(--border-subtle));
+  }
+  .btn-ghost:hover {
+    color: hsl(var(--text-primary));
+    border-color: hsl(var(--border-strong));
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(var(--brand)), hsl(var(--accent)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .input {
+    width: 100%;
+    background: hsl(var(--bg-base) / 0.6);
+    border: 1px solid hsl(var(--border-subtle));
+    border-radius: 10px;
+    padding: 0.6rem 0.85rem;
+    color: hsl(var(--text-primary));
+    font-size: 0.9rem;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+  .input:focus {
+    outline: none;
+    border-color: hsl(var(--brand));
+    box-shadow: 0 0 0 3px hsl(var(--brand) / 0.15);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-in {
+  animation: fade-in-up 0.4s ease both;
+}

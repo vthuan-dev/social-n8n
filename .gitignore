@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.next/
+.env
+.env.local
+*.log
+.DS_Store
+postgres_data/
+n8n_data/
+coverage/
+tsconfig.tsbuildinfo
+scratch/

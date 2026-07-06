@@ -1,0 +1,95 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: social_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-social}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-social_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-social_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-social}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: social_n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Asia/Ho_Chi_Minh}
+      - N8N_SECURE_COOKIE=false
+      # Cho phép expression trong node đọc biến môi trường qua $env
+      # (BACKEND_BASE_URL, GROQ_API_KEY, WEBHOOK_SECRET). Mặc định n8n chặn.
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      # Dùng service name để backend (trong docker network) gọi được resumeUrl
+      # của node Wait. resumeUrl được n8n sinh từ WEBHOOK_URL này.
+      - WEBHOOK_URL=http://n8n:5678/
+      - BACKEND_BASE_URL=${N8N_BASE_URL:-http://backend:4000}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: social_backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - BACKEND_PORT=4000
+      - BACKEND_PUBLIC_URL=${BACKEND_PUBLIC_URL:-http://localhost:4000}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-social}:${POSTGRES_PASSWORD:-social_secret}@postgres:5432/${POSTGRES_DB:-social_db}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-15m}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - JWT_REFRESH_EXPIRES_IN=${JWT_REFRESH_EXPIRES_IN:-7d}
+      - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}
+      - N8N_BASE_URL=${N8N_BASE_URL:-http://n8n:5678}
+      - N8N_WEBHOOK_GENERATE=${N8N_WEBHOOK_GENERATE}
+      - N8N_WEBHOOK_PUBLISH=${N8N_WEBHOOK_PUBLISH}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: social_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  n8n_data:
